@@ -1,0 +1,582 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>РАСТАМОЖЬ.РФ — калькулятор импорта</title>
+
+<script>
+/* Перехватываем числовой результат Calcus до загрузки его библиотеки.
+   Это нужно потому, что публичный виджет не документирует callback результата. */
+(function(){
+  function emitCalcusResult(data, source){
+    try{
+      if (!data || typeof data !== 'object') return;
+      const total = Number(data.total);
+      if (Number.isFinite(total) && total > 0) {
+        window.dispatchEvent(new CustomEvent('rastamozh:calcus-result', {
+          detail: { data, source: source || 'network' }
+        }));
+      }
+    }catch(e){}
+  }
+
+  if (window.fetch) {
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = async function(...args){
+      const response = await nativeFetch(...args);
+      try{
+        const url = String(args[0]?.url || args[0] || '');
+        if (/calcus\.ru/i.test(url)) {
+          response.clone().json().then(d => emitCalcusResult(d, 'fetch')).catch(()=>{});
+        }
+      }catch(e){}
+      return response;
+    };
+  }
+
+  const NativeXHR = window.XMLHttpRequest;
+  if (NativeXHR) {
+    const open = NativeXHR.prototype.open;
+    const send = NativeXHR.prototype.send;
+    NativeXHR.prototype.open = function(method, url, ...rest){
+      this.__rastamozhUrl = String(url || '');
+      return open.call(this, method, url, ...rest);
+    };
+    NativeXHR.prototype.send = function(...args){
+      this.addEventListener('load', function(){
+        try{
+          if (/calcus\.ru/i.test(this.__rastamozhUrl || '')) {
+            const d = JSON.parse(this.responseText);
+            emitCalcusResult(d, 'xhr');
+          }
+        }catch(e){}
+      });
+      return send.apply(this, args);
+    };
+  }
+})();
+</script>
+
+<script src="https://calcus.ru/dist/widget.js"></script>
+<style>
+:root{
+  --bg:#f4f4f1; --card:#fff; --text:#171717; --muted:#717171;
+  --line:#e7e7e2; --orange:#ff6a00; --black:#111; --soft:#fff4eb;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text)}
+button,input,select{font:inherit}
+.wrap{width:min(1180px,calc(100% - 28px));margin:0 auto;padding:24px 0 48px}
+.header{display:flex;justify-content:space-between;gap:20px;align-items:center;margin-bottom:18px}
+.brand{display:flex;gap:12px;align-items:center}
+.logo{width:46px;height:46px;background:var(--orange);border-radius:13px;position:relative;flex:0 0 auto}
+.logo:before,.logo:after{content:"";position:absolute;left:11px;height:6px;background:#fff;border-radius:4px}
+.logo:before{width:24px;top:12px}.logo:after{width:17px;top:27px}
+h1{font-size:clamp(24px,4vw,38px);line-height:1;margin:0;letter-spacing:-.04em}
+.small{font-size:13px;color:var(--muted);margin-top:5px}
+.rates-head{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.rate-pill{background:#fff;border:1px solid var(--line);border-radius:999px;padding:8px 11px;font-size:12px}
+.rate-pill b{color:var(--orange)}
+.tabs{display:grid;grid-template-columns:repeat(3,1fr);background:#e8e8e4;padding:5px;border-radius:16px;margin-bottom:18px}
+.tab{border:0;background:transparent;border-radius:12px;padding:12px;font-weight:800;cursor:pointer;color:#666}
+.tab.active{background:#111;color:#fff}
+.panel{display:none}.panel.active{display:block}
+.grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(320px,.9fr);gap:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:20px;box-shadow:0 8px 30px rgba(0,0,0,.035)}
+.card h2,.card h3{margin:0;letter-spacing:-.025em}
+.card h2{font-size:25px}.card h3{font-size:18px}
+.desc{color:var(--muted);font-size:13px;line-height:1.45;margin:6px 0 18px}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.field{min-width:0}
+.field.full{grid-column:1/-1}
+label{display:block;font-size:12px;font-weight:800;margin:0 0 6px;color:#4d4d4d}
+.inp{display:flex;align-items:center;border:1px solid var(--line);background:#fafaf8;border-radius:13px;overflow:hidden}
+.inp input,.inp select{width:100%;border:0;outline:0;background:transparent;padding:13px 12px;color:#111}
+.unit{padding-right:12px;font-size:12px;color:#777;white-space:nowrap}
+.help{font-size:11px;color:#888;margin-top:5px;line-height:1.35}
+.break{height:1px;background:var(--line);margin:18px 0}
+.segment{display:grid;grid-template-columns:1fr 1fr;background:#efefec;border-radius:12px;padding:4px;margin:10px 0 14px}
+.segment button{border:0;background:transparent;padding:10px;border-radius:9px;font-size:12px;font-weight:800;cursor:pointer}
+.segment button.active{background:#fff;box-shadow:0 2px 7px rgba(0,0,0,.08)}
+.calcus-box{display:none;margin-top:10px;border-top:1px dashed var(--line);padding-top:15px}
+.calcus-box.active{display:block}
+.sync{background:var(--soft);border:1px solid #ffd5b5;border-radius:12px;padding:11px 12px;font-size:12px;color:#7c3a09;margin-top:12px}
+.summary{position:sticky;top:18px}
+.total-label{font-size:12px;color:#777;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
+.total{font-size:clamp(34px,5vw,52px);font-weight:900;letter-spacing:-.055em;margin:6px 0 18px}
+.rows{display:grid;gap:0}
+.row{display:flex;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid var(--line);font-size:13px}
+.row span:first-child{color:#686868}.row b{text-align:right}
+.row.strong{font-size:15px}
+.row.strong span,.row.strong b{color:#111}
+.actions{display:flex;gap:8px;margin-top:16px}
+.btn{border:0;border-radius:12px;padding:12px 14px;font-weight:800;cursor:pointer}
+.btn.primary{background:#111;color:#fff;flex:1}
+.btn.secondary{background:#efefec;color:#111}
+.course-card{margin-top:18px}
+.course-title{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+.status{font-size:11px;padding:6px 9px;border-radius:999px;background:#eef7ee;color:#337333}
+.status.bad{background:#fff0ed;color:#a74732}
+.template-empty{min-height:360px;display:grid;place-items:center;text-align:center}
+.template-empty .big{font-size:54px;margin-bottom:8px}
+.note{font-size:12px;line-height:1.45;color:#777}
+.api-credit{font-size:10px;color:#999;margin-top:10px}
+.api-credit a{color:#777}
+@media(max-width:850px){
+  .header{display:block}.rates-head{justify-content:flex-start;margin-top:14px}
+  .grid{grid-template-columns:1fr}.summary{position:static}.fields{grid-template-columns:1fr}
+  .field.full{grid-column:auto}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="header">
+    <div class="brand">
+      <div class="logo"></div>
+      <div>
+        <h1>РАСТАМОЖЬ.РФ</h1>
+        <div class="small">Рабочий калькулятор импорта</div>
+      </div>
+    </div>
+    <div class="rates-head">
+      <div class="rate-pill">USD ЦБ: <b id="head-usd">—</b></div>
+      <div class="rate-pill">CNY ЦБ: <b id="head-cny">—</b></div>
+      <div class="rate-pill">1000 KRW ЦБ: <b id="head-krw">—</b></div>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="china">Китай</button>
+    <button class="tab" data-tab="korea">Корея</button>
+    <button class="tab" data-tab="templates">Шаблоны</button>
+  </nav>
+
+  <!-- CHINA -->
+  <section id="panel-china" class="panel active">
+    <div class="grid">
+      <div>
+        <div class="card">
+          <h2>Китай</h2>
+          <div class="desc">Стоимость автомобиля + фиксированные расходы + таможня. Все базовые суммы можно менять.</div>
+          <div class="fields">
+            <div class="field">
+              <label>Автомобиль с доставкой до Москвы</label>
+              <div class="inp"><input id="cn-car-cny" type="number" min="0" step="100" placeholder="0"><span class="unit">CNY</span></div>
+              <div class="help">Пересчитывается в рубли по курсу CNY ниже.</div>
+            </div>
+            <div class="field">
+              <label>Курс CNY → RUB</label>
+              <div class="inp"><input id="cn-cny-rate" type="number" min="0" step="0.0001" placeholder="авто"><span class="unit">₽</span></div>
+              <div class="help">Автоматически из курса ЦБ, можно изменить вручную.</div>
+            </div>
+            <div class="field">
+              <label>Комиссия</label>
+              <div class="inp"><input id="cn-commission" type="number" value="100000" step="1000"><span class="unit">₽</span></div>
+            </div>
+            <div class="field">
+              <label>Аванс</label>
+              <div class="inp"><input id="cn-advance" type="number" value="25000" step="1000"><span class="unit">₽</span></div>
+            </div>
+            <div class="field full">
+              <label>Таможенный брокер + СБКТС + ЭПТС</label>
+              <div class="inp"><input id="cn-broker" type="number" value="100000" step="1000"><span class="unit">₽</span></div>
+            </div>
+          </div>
+
+          <div class="break"></div>
+          <h3>Таможня</h3>
+          <div class="segment" data-customs-segment="cn">
+            <button class="active" data-mode="manual">Ввести вручную</button>
+            <button data-mode="calcus">Калькулятор Calcus</button>
+          </div>
+
+          <div class="field">
+            <label>Таможенные платежи в итог</label>
+            <div class="inp"><input id="cn-customs" type="number" value="0" step="1000"><span class="unit">₽</span></div>
+            <div class="help" id="cn-customs-help">Введите сумму вручную.</div>
+          </div>
+
+          <div id="cn-calcus-box" class="calcus-box">
+            <div id="calcus-container-1"></div>
+            <div class="sync">После расчёта итог Calcus автоматически подставляется в поле выше и сразу участвует в общей стоимости.</div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="card summary">
+        <div class="total-label">Итого Китай</div>
+        <div class="total" id="cn-total">0 ₽</div>
+        <div class="rows">
+          <div class="row"><span>Автомобиль</span><b id="cn-row-car">0 ₽</b></div>
+          <div class="row"><span>Таможня</span><b id="cn-row-customs">0 ₽</b></div>
+          <div class="row"><span>Брокер + СБКТС + ЭПТС</span><b id="cn-row-broker">100 000 ₽</b></div>
+          <div class="row"><span>Комиссия</span><b id="cn-row-commission">100 000 ₽</b></div>
+          <div class="row"><span>Аванс</span><b id="cn-row-advance">25 000 ₽</b></div>
+          <div class="row strong"><span>Всего расходов сверх авто</span><b id="cn-row-extra">225 000 ₽</b></div>
+        </div>
+        <div class="actions"><button class="btn primary" onclick="copyChina()">Скопировать расчёт</button><button class="btn secondary" onclick="resetChina()">Сброс</button></div>
+        <div class="note" style="margin-top:12px">Сейчас аванс учитывается как отдельная статья в общей цене, как ты задал. Если аванс должен засчитываться в комиссию, это легко переключим.</div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- KOREA -->
+  <section id="panel-korea" class="panel">
+    <div class="grid">
+      <div>
+        <div class="card">
+          <h2>Корея</h2>
+          <div class="desc">Цена в KRW автоматически переводится в USD по кросс-курсу ЦБ, затем в RUB по курсу USD ЦБ + 2 ₽.</div>
+          <div class="fields">
+            <div class="field full">
+              <label>Цена автомобиля</label>
+              <div class="inp"><input id="kr-car-krw" type="number" min="0" step="100000" placeholder="0"><span class="unit">KRW</span></div>
+              <div class="help"><span id="kr-preview-usd">≈ 0 $</span> · <span id="kr-preview-rub">≈ 0 ₽</span></div>
+            </div>
+            <div class="field">
+              <label>Логистика до Владивостока</label>
+              <div class="inp"><input id="kr-log-vlad-usd" type="number" value="1000" step="50"><span class="unit">USD</span></div>
+            </div>
+            <div class="field">
+              <label>Логистика до Москвы</label>
+              <div class="inp"><input id="kr-log-moscow" type="number" value="220000" step="1000"><span class="unit">₽</span></div>
+            </div>
+            <div class="field">
+              <label>Брокер + СБКТС + ЭПТС</label>
+              <div class="inp"><input id="kr-broker" type="number" value="90000" step="1000"><span class="unit">₽</span></div>
+            </div>
+            <div class="field">
+              <label>Аванс</label>
+              <div class="inp"><input id="kr-advance" type="number" value="50000" step="1000"><span class="unit">₽</span></div>
+            </div>
+            <div class="field full">
+              <label>Комиссия</label>
+              <div class="inp"><input id="kr-commission" type="number" value="100000" step="1000"><span class="unit">₽</span></div>
+            </div>
+          </div>
+
+          <div class="break"></div>
+          <h3>Таможня</h3>
+          <div class="segment" data-customs-segment="kr">
+            <button class="active" data-mode="manual">Ввести вручную</button>
+            <button data-mode="calcus">Калькулятор Calcus</button>
+          </div>
+          <div class="field">
+            <label>Таможенные платежи в итог</label>
+            <div class="inp"><input id="kr-customs" type="number" value="0" step="1000"><span class="unit">₽</span></div>
+            <div class="help" id="kr-customs-help">Введите сумму вручную.</div>
+          </div>
+          <div id="kr-calcus-box" class="calcus-box">
+            <div id="calcus-container-2"></div>
+            <div class="sync">После расчёта итог Calcus автоматически подставляется в поле выше и сразу участвует в общей стоимости. Поле остаётся редактируемым.</div>
+          </div>
+        </div>
+
+        <div class="card course-card">
+          <div class="course-title">
+            <h3>Курсы</h3>
+            <span id="rate-status" class="status">Загрузка…</span>
+          </div>
+          <div class="fields">
+            <div class="field">
+              <label>USD ЦБ</label>
+              <div class="inp"><input id="kr-usd-cbr" type="number" step="0.0001"><span class="unit">₽/$</span></div>
+            </div>
+            <div class="field">
+              <label>Надбавка к USD</label>
+              <div class="inp"><input id="kr-usd-markup" type="number" value="2" step="0.1"><span class="unit">₽</span></div>
+            </div>
+            <div class="field">
+              <label>1000 KRW по ЦБ</label>
+              <div class="inp"><input id="kr-krw1000-cbr" type="number" step="0.0001"><span class="unit">₽</span></div>
+            </div>
+            <div class="field">
+              <label>Рабочий USD → RUB</label>
+              <div class="inp"><input id="kr-usd-work" type="text" readonly><span class="unit">₽/$</span></div>
+            </div>
+          </div>
+          <div class="help" id="rates-date">Дата курса: —</div>
+          <div class="api-credit">Курсы: <a href="https://www.cbr-xml-daily.ru/" target="_blank" rel="noopener">API для курсов ЦБ РФ</a></div>
+        </div>
+      </div>
+
+      <aside class="card summary">
+        <div class="total-label">Итого Корея</div>
+        <div class="total" id="kr-total">0 ₽</div>
+        <div class="rows">
+          <div class="row"><span>Автомобиль</span><b id="kr-row-car">0 ₽</b></div>
+          <div class="row"><span>Автомобиль, USD</span><b id="kr-row-car-usd">0 $</b></div>
+          <div class="row"><span>Логистика до Владивостока</span><b id="kr-row-vlad">0 ₽</b></div>
+          <div class="row"><span>Таможня</span><b id="kr-row-customs">0 ₽</b></div>
+          <div class="row"><span>Брокер + СБКТС + ЭПТС</span><b id="kr-row-broker">90 000 ₽</b></div>
+          <div class="row"><span>Логистика до Москвы</span><b id="kr-row-moscow">220 000 ₽</b></div>
+          <div class="row"><span>Аванс</span><b id="kr-row-advance">50 000 ₽</b></div>
+          <div class="row"><span>Комиссия</span><b id="kr-row-commission">100 000 ₽</b></div>
+          <div class="row strong"><span>Рабочий курс USD</span><b id="kr-row-usd-rate">—</b></div>
+        </div>
+        <div class="actions"><button class="btn primary" onclick="copyKorea()">Скопировать расчёт</button><button class="btn secondary" onclick="resetKorea()">Сброс</button></div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- TEMPLATES -->
+  <section id="panel-templates" class="panel">
+    <div class="card template-empty">
+      <div>
+        <div class="big">◻︎</div>
+        <h2>Шаблоны</h2>
+        <div class="desc">Эту вкладку пока не трогаем.</div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+const nf = new Intl.NumberFormat('ru-RU', {maximumFractionDigits:0});
+const nf2 = new Intl.NumberFormat('ru-RU', {minimumFractionDigits:2, maximumFractionDigits:4});
+const money = n => nf.format(Math.round(Number(n)||0)) + ' ₽';
+const usdFmt = n => nf.format(Math.round(Number(n)||0)) + ' $';
+const val = id => Number(document.getElementById(id).value)||0;
+let calcusInit = {cn:false, kr:false};
+
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+}
+document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
+
+function updateChina(){
+  const carRub = val('cn-car-cny') * val('cn-cny-rate');
+  const customs = val('cn-customs'), broker=val('cn-broker'), commission=val('cn-commission'), advance=val('cn-advance');
+  const extra = customs+broker+commission+advance;
+  document.getElementById('cn-row-car').textContent=money(carRub);
+  document.getElementById('cn-row-customs').textContent=money(customs);
+  document.getElementById('cn-row-broker').textContent=money(broker);
+  document.getElementById('cn-row-commission').textContent=money(commission);
+  document.getElementById('cn-row-advance').textContent=money(advance);
+  document.getElementById('cn-row-extra').textContent=money(extra);
+  document.getElementById('cn-total').textContent=money(carRub+extra);
+}
+function koreaCalc(){
+  const usd=val('kr-usd-cbr'), mark=val('kr-usd-markup'), krw1000=val('kr-krw1000-cbr');
+  const workUsd=usd+mark;
+  const krwRubPer1=krw1000/1000;
+  const carKrw=val('kr-car-krw');
+  const carUsd = usd>0 ? (carKrw*krwRubPer1/usd) : 0;
+  const carRub = carUsd*workUsd;
+  const vladRub = val('kr-log-vlad-usd')*workUsd;
+  const customs=val('kr-customs'), broker=val('kr-broker'), moscow=val('kr-log-moscow'), advance=val('kr-advance'), commission=val('kr-commission');
+  const total=carRub+vladRub+customs+broker+moscow+advance+commission;
+
+  document.getElementById('kr-usd-work').value=workUsd ? nf2.format(workUsd) : '';
+  document.getElementById('kr-preview-usd').textContent='≈ '+usdFmt(carUsd);
+  document.getElementById('kr-preview-rub').textContent='≈ '+money(carRub);
+  document.getElementById('kr-row-car').textContent=money(carRub);
+  document.getElementById('kr-row-car-usd').textContent=usdFmt(carUsd);
+  document.getElementById('kr-row-vlad').textContent=money(vladRub);
+  document.getElementById('kr-row-customs').textContent=money(customs);
+  document.getElementById('kr-row-broker').textContent=money(broker);
+  document.getElementById('kr-row-moscow').textContent=money(moscow);
+  document.getElementById('kr-row-advance').textContent=money(advance);
+  document.getElementById('kr-row-commission').textContent=money(commission);
+  document.getElementById('kr-row-usd-rate').textContent=workUsd ? nf2.format(workUsd)+' ₽/$' : '—';
+  document.getElementById('kr-total').textContent=money(total);
+}
+document.querySelectorAll('input').forEach(i=>i.addEventListener('input',()=>{updateChina();koreaCalc()}));
+
+function initCalcus(kind){
+  if(kind==='cn' && !calcusInit.cn){
+    try{
+      CalcusWidget.show('Customs',{instance:1});
+      watchCalcus('calcus-container-1','cn-customs','cn-customs-help');
+      calcusInit.cn=true;
+    }catch(e){}
+  }
+  if(kind==='kr' && !calcusInit.kr){
+    try{
+      CalcusWidget.show('Customs',{instance:2});
+      watchCalcus('calcus-container-2','kr-customs','kr-customs-help');
+      calcusInit.kr=true;
+    }catch(e){}
+  }
+}
+document.querySelectorAll('[data-customs-segment]').forEach(seg=>{
+  seg.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>{
+    seg.querySelectorAll('button').forEach(x=>x.classList.remove('active'));
+    btn.classList.add('active');
+    const kind=seg.dataset.customsSegment, mode=btn.dataset.mode;
+    document.getElementById(kind+'-calcus-box').classList.toggle('active',mode==='calcus');
+    document.getElementById(kind+'-customs-help').textContent = mode==='calcus'
+      ? 'Итог можно получить в Calcus ниже; при необходимости поле остаётся редактируемым.'
+      : 'Введите сумму вручную.';
+    if(mode==='calcus') initCalcus(kind);
+  }));
+});
+
+function parseNumberText(s){
+  const cleaned=String(s)
+    .replace(/\u00a0/g,' ')
+    .replace(/[^\d,.\s]/g,'')
+    .trim();
+  if(!cleaned) return 0;
+  return Number(cleaned.replace(/\s/g,'').replace(',','.'))||0;
+}
+
+function activeCalcusKind(){
+  if(document.getElementById('panel-korea').classList.contains('active')) return 'kr';
+  return 'cn';
+}
+
+function applyCalcusTotal(kind,total,details){
+  total=Number(total)||0;
+  if(total<=0) return;
+  const inputId=kind==='kr'?'kr-customs':'cn-customs';
+  const helpId=kind==='kr'?'kr-customs-help':'cn-customs-help';
+  document.getElementById(inputId).value=Math.round(total);
+  const parts=[];
+  if(details && Number(details.sbor)>0) parts.push('сбор '+money(details.sbor));
+  if(details && Number(details.tax)>0) parts.push('пошлина '+money(details.tax));
+  if(details && Number(details.util)>0) parts.push('утиль '+money(details.util));
+  if(details && Number(details.nds)>0) parts.push('НДС '+money(details.nds));
+  if(details && Number(details.excise)>0) parts.push('акциз '+money(details.excise));
+  document.getElementById(helpId).textContent =
+    'Подставлено автоматически из Calcus: '+money(total)+(parts.length?' · '+parts.join(' · '):'');
+  updateChina();
+  koreaCalc();
+}
+
+/* Основной путь: ловим JSON-ответ расчёта Calcus и берём поле total. */
+window.addEventListener('rastamozh:calcus-result',function(e){
+  const d=e.detail?.data||{};
+  applyCalcusTotal(activeCalcusKind(),d.total,d);
+});
+
+/* Резервный путь: если виджет отрисовал результат прямо в DOM. */
+function watchCalcus(containerId,inputId,helpId){
+  const box=document.getElementById(containerId);
+  if(!box) return;
+  const kind=inputId.startsWith('kr-')?'kr':'cn';
+
+  const tryExtract=()=>{
+    const sources=[box,document.body];
+    for(const el of sources){
+      const txt=(el.innerText||'').replace(/\u00a0/g,' ');
+      const patterns=[
+        /Полная\s+стоимость\s+растаможки[\s\S]{0,120}?([\d][\d\s.,]*)\s*(?:₽|руб)/i,
+        /Полная\s+стоимость\s+растаможки[\s:–—-]*([\d][\d\s.,]*)/i
+      ];
+      for(const re of patterns){
+        const m=txt.match(re);
+        if(m){
+          const n=parseNumberText(m[1]);
+          if(n>0){
+            applyCalcusTotal(kind,n,null);
+            return;
+          }
+        }
+      }
+    }
+
+    /* Если Calcus использует iframe и он same-origin, пробуем прочитать его.
+       Cross-origin iframe просто молча пропускается. */
+    try{
+      const frames=box.querySelectorAll('iframe');
+      frames.forEach(f=>{
+        try{
+          const txt=(f.contentDocument?.body?.innerText||'').replace(/\u00a0/g,' ');
+          const m=txt.match(/Полная\s+стоимость\s+растаможки[\s\S]{0,120}?([\d][\d\s.,]*)\s*(?:₽|руб)/i);
+          if(m){
+            const n=parseNumberText(m[1]);
+            if(n>0) applyCalcusTotal(kind,n,null);
+          }
+        }catch(e){}
+      });
+    }catch(e){}
+  };
+
+  new MutationObserver(tryExtract).observe(document.body,{
+    childList:true,subtree:true,characterData:true,attributes:true
+  });
+  setInterval(tryExtract,1000);
+}
+
+function copyText(t){navigator.clipboard?.writeText(t).catch(()=>{});}
+function copyChina(){
+  const t=[
+    'Китай — расчёт',
+    'Автомобиль: '+document.getElementById('cn-row-car').textContent,
+    'Таможня: '+document.getElementById('cn-row-customs').textContent,
+    'Брокер + СБКТС + ЭПТС: '+document.getElementById('cn-row-broker').textContent,
+    'Комиссия: '+document.getElementById('cn-row-commission').textContent,
+    'Аванс: '+document.getElementById('cn-row-advance').textContent,
+    'ИТОГО: '+document.getElementById('cn-total').textContent
+  ].join('\n'); copyText(t);
+}
+function copyKorea(){
+  const t=[
+    'Корея — расчёт',
+    'Автомобиль: '+document.getElementById('kr-row-car-usd').textContent+' / '+document.getElementById('kr-row-car').textContent,
+    'Логистика до Владивостока: '+document.getElementById('kr-row-vlad').textContent,
+    'Таможня: '+document.getElementById('kr-row-customs').textContent,
+    'Брокер + СБКТС + ЭПТС: '+document.getElementById('kr-row-broker').textContent,
+    'Логистика до Москвы: '+document.getElementById('kr-row-moscow').textContent,
+    'Аванс: '+document.getElementById('kr-row-advance').textContent,
+    'Комиссия: '+document.getElementById('kr-row-commission').textContent,
+    'ИТОГО: '+document.getElementById('kr-total').textContent
+  ].join('\n'); copyText(t);
+}
+function resetChina(){
+  document.getElementById('cn-car-cny').value='';
+  document.getElementById('cn-customs').value=0;
+  document.getElementById('cn-commission').value=100000;
+  document.getElementById('cn-advance').value=25000;
+  document.getElementById('cn-broker').value=100000;
+  updateChina();
+}
+function resetKorea(){
+  document.getElementById('kr-car-krw').value='';
+  document.getElementById('kr-log-vlad-usd').value=1000;
+  document.getElementById('kr-log-moscow').value=220000;
+  document.getElementById('kr-broker').value=90000;
+  document.getElementById('kr-advance').value=50000;
+  document.getElementById('kr-commission').value=100000;
+  document.getElementById('kr-customs').value=0;
+  koreaCalc();
+}
+
+function CBR_XML_Daily_Ru(rates){
+  try{
+    const usd=rates.Valute.USD.Value/rates.Valute.USD.Nominal;
+    const cny=rates.Valute.CNY.Value/rates.Valute.CNY.Nominal;
+    const krw1000=(rates.Valute.KRW.Value/rates.Valute.KRW.Nominal)*1000;
+    document.getElementById('kr-usd-cbr').value=usd.toFixed(4);
+    document.getElementById('kr-krw1000-cbr').value=krw1000.toFixed(4);
+    document.getElementById('cn-cny-rate').value=cny.toFixed(4);
+    document.getElementById('head-usd').textContent=nf2.format(usd)+' ₽';
+    document.getElementById('head-cny').textContent=nf2.format(cny)+' ₽';
+    document.getElementById('head-krw').textContent=nf2.format(krw1000)+' ₽';
+    document.getElementById('rates-date').textContent='Дата курса: '+(rates.Date ? new Date(rates.Date).toLocaleDateString('ru-RU') : 'актуальная');
+    document.getElementById('rate-status').textContent='Курсы загружены';
+    updateChina(); koreaCalc();
+  }catch(e){
+    rateFailed();
+  }
+}
+function rateFailed(){
+  const s=document.getElementById('rate-status');
+  s.textContent='Введите курсы вручную'; s.classList.add('bad');
+}
+window.addEventListener('load',()=>{
+  updateChina(); koreaCalc();
+  setTimeout(()=>{
+    if(!val('kr-usd-cbr')) rateFailed();
+  },5000);
+});
+</script>
+<link rel="dns-prefetch" href="https://www.cbr-xml-daily.ru/">
+<script src="https://www.cbr-xml-daily.ru/daily_jsonp.js" async></script>
+</body>
+</html>
